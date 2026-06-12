@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ループエンジニアリングでSNSを完全自動化｜撮影用スライド</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+/* ============ デザイントークン ============ */
+:root {
+  --teal-bright: #35BCAC;
+  --teal-mid:    #1E8E8E;
+  --teal-deep:   #0C5F6A;
+  --navy-deep:   #0E3D4A;
+  --teal-dark2:  #17707B;
+  --bg-white:    #FFFFFF;
+  --bg-light:    #DFF2EF;
+  --bg-gray:     #F4F6F7;
+  --text-main:   #1A1A1A;
+  --accent-red:  #E03131;
+  --border-navy: #14424F;
+  --gray-muted:  #B9C4C7;
+  --clawd:       #DA7756;
+  --clawd-dark:  #B85C3E;
+  --grad-header: linear-gradient(90deg, #35BCAC 0%, #0C5F6A 100%);
+  --grad-band:   linear-gradient(100deg, #0E3D4A 0%, #17707B 100%);
+  --grad-corner: linear-gradient(135deg, #35BCAC 0%, #0C5F6A 100%);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; background: #20262B; overflow: hidden; }
+body { font-family: 'Noto Sans JP', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif; color: var(--text-main); }
+
+/* ============ ステージ＆ナビ ============ */
+#viewport { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+#stage { width: 1280px; height: 720px; position: relative; background: var(--bg-white); box-shadow: 0 8px 40px rgba(0,0,0,.45); transform-origin: center center; }
+.slide { position: absolute; inset: 0; width: 1280px; height: 720px; background: var(--bg-white); display: none; overflow: hidden; }
+.slide.active { display: block; }
+#hud { position: fixed; bottom: 14px; right: 18px; z-index: 50; color: #cfd8da; font-size: 13px; font-weight: 500; user-select: none; display: flex; gap: 14px; align-items: center; transition: opacity .4s; }
+body.idle #hud { opacity: 0; pointer-events: none; }
+#hud button { background: #37424a; color: #cfd8da; border: 0; border-radius: 6px; padding: 4px 12px; font-size: 13px; cursor: pointer; font-family: inherit; }
+#hud button:hover { background: #46545e; }
+.pageno { position: absolute; bottom: 16px; right: 24px; font-size: 14px; font-weight: 700; color: #9fb3b7; z-index: 5; }
+
+/* ============ 装飾パーツ ============ */
+.dots { position: absolute; display: flex; gap: 6px; z-index: 3; }
+.dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--teal-bright); }
+.dots.white i { background: rgba(255,255,255,.92); }
+.dots.bl { left: 28px; bottom: 22px; }
+.dots.tr { right: 28px; top: 22px; }
+.qcircle { position: absolute; right: 0; bottom: 0; width: 110px; height: 110px; background: var(--grad-corner); border-radius: 110px 0 0 0; z-index: 2; }
+.qcircle::after { content: ""; position: absolute; right: 18px; bottom: 16px; width: 44px; height: 34px;
+  background-image: radial-gradient(rgba(255,255,255,.85) 2px, transparent 2.6px); background-size: 11px 11px; }
+.wedge-tl { position: absolute; left: 0; top: 0; width: 0; height: 0; border-top: 84px solid var(--teal-bright); border-right: 84px solid transparent; opacity: .92; z-index: 2; }
+
+/* ============ 型B: ヘッダー帯 ============ */
+.s-band .band { position: absolute; top: 0; left: 0; right: 0; height: 58px; background: var(--grad-header); display: flex; align-items: center; justify-content: center; }
+.s-band .band h1 { color: #fff; font-size: 27px; font-weight: 900; letter-spacing: .05em; }
+.s-band .band .dots { right: 22px; top: 25px; }
+.s-band .content { position: absolute; top: 58px; left: 0; right: 0; bottom: 0; padding: 44px 80px; }
+.s-band .content.vcenter { display: flex; flex-direction: column; justify-content: center; }
+
+/* ============ 型C: タグ ============ */
+.s-tag .tag { position: absolute; top: 0; left: 0; background: var(--teal-bright); color: #fff; font-size: 18px; font-weight: 900; padding: 10px 26px 10px 20px; border-radius: 0 0 10px 0; z-index: 4; }
+.s-tag .content { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; padding: 0 100px; text-align: center; }
+
+/* ============ 型D: ステートメント帯 ============ */
+.s-statement .lead { position: absolute; top: 56px; left: 0; right: 0; text-align: center; font-size: 30px; font-weight: 900; }
+.s-statement .darkband { position: absolute; top: 50%; left: 0; right: 0; transform: translateY(-50%); min-height: 270px; background: var(--grad-band); display: flex; align-items: center; justify-content: center; padding: 40px 70px; }
+.s-statement .darkband p { color: #fff; font-size: 38px; font-weight: 900; line-height: 1.55; text-align: center; letter-spacing: .03em; }
+.s-statement.no-lead .darkband { min-height: 230px; }
+
+/* ============ 型E: 章扉 ============ */
+.s-divider { background: var(--bg-white); }
+.s-divider .pill { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); background: var(--grad-band); color: #fff; font-size: 26px; font-weight: 900; letter-spacing: .06em; padding: 26px 78px; border-radius: 999px; text-align: center; line-height: 1.5; }
+.s-divider .chapnum { position: absolute; top: calc(50% - 110px); left: 50%; transform: translateX(-50%); color: var(--teal-mid); font-size: 19px; font-weight: 900; letter-spacing: .22em; }
+
+/* ============ 型F: 囲み箱 ============ */
+.s-box .boxwrap { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 26px; padding: 70px 110px 60px; }
+.s-box .frame { border: 2px solid var(--border-navy); border-radius: 6px; padding: 38px 56px; width: 100%; background: #fff; }
+.s-box.s-band .boxwrap { top: 58px; padding-top: 40px; }
+
+/* ============ 型H: 対比 ============ */
+.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 36px; height: 100%; align-content: center; }
+.compare .card { border-radius: 12px; padding: 26px 30px; background: var(--bg-gray); }
+.compare .card.now { background: var(--bg-light); }
+.compare .card .lbl { display: inline-block; font-size: 16px; font-weight: 900; padding: 6px 18px; border-radius: 6px; background: #8a9aa0; color: #fff; margin-bottom: 14px; }
+.compare .card.now .lbl { background: var(--teal-mid); }
+.compare .card .eq { font-size: 25px; font-weight: 900; margin-bottom: 6px; }
+.compare .card .eq .bad { color: var(--accent-red); }
+.compare .card .eq .good { color: var(--teal-deep); }
+.compare .card ul { margin-top: 10px; }
+
+/* ============ 汎用パーツ ============ */
+h2.sec { font-size: 30px; font-weight: 900; margin-bottom: 22px; }
+p.body { font-size: 21px; font-weight: 500; line-height: 1.8; }
+strong.red, .red { color: var(--accent-red); font-weight: inherit; }
+strong.teal, .teal { color: var(--teal-deep); }
+.big { font-size: 34px; font-weight: 900; line-height: 1.6; }
+.center { text-align: center; }
+ul.check, ul.dot { list-style: none; }
+ul.check li, ul.dot li { font-size: 21px; font-weight: 700; line-height: 1.7; padding-left: 36px; position: relative; margin-bottom: 14px; }
+ul.check li::before { content: "✓"; position: absolute; left: 0; top: 0; color: var(--teal-mid); font-weight: 900; }
+ul.dot li::before { content: ""; position: absolute; left: 8px; top: 13px; width: 10px; height: 10px; border-radius: 50%; background: var(--teal-mid); }
+.callout { background: var(--bg-light); border-radius: 12px; padding: 18px 34px; font-size: 22px; font-weight: 900; text-align: center; }
+.note { font-size: 15px; color: #5b6b6f; font-weight: 500; }
+.kicker { font-size: 18px; font-weight: 900; color: var(--teal-mid); letter-spacing: .12em; margin-bottom: 10px; }
+.colcenter { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; gap: 24px; }
+.tbl { width: 100%; border-collapse: collapse; font-size: 19px; }
+.tbl th { background: var(--teal-deep); color: #fff; font-weight: 900; padding: 12px 16px; border: 1px solid #d7e2e4; }
+.tbl td { padding: 11px 16px; border: 1px solid #d7e2e4; font-weight: 500; }
+.steplist { counter-reset: stp; list-style: none; }
+.steplist li { font-size: 22px; font-weight: 700; padding: 14px 0 14px 64px; position: relative; }
+.steplist li::before { counter-increment: stp; content: counter(stp); position: absolute; left: 8px; top: 50%; transform: translateY(-50%); width: 40px; height: 40px; border-radius: 50%; background: var(--grad-corner); color: #fff; font-weight: 900; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+.xpost-ph { display: flex; align-items: center; justify-content: center; background: var(--bg-gray); color: #8a9aa0; font-size: 18px; font-weight: 700; border-radius: 14px; border: 2px dashed #b9c4c7; text-align: center; line-height: 1.7; }
+
+/* ============ 追加: ターミナル / コード ============ */
+.term { background: #14222a; border-radius: 12px; box-shadow: 0 8px 28px rgba(0,0,0,.3); overflow: hidden; width: 100%; }
+.term .tbar { background: #1d313b; height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 14px; }
+.term .tbar i { width: 12px; height: 12px; border-radius: 50%; }
+.term .tbar i:nth-child(1) { background: #ff5f57; } .term .tbar i:nth-child(2) { background: #febc2e; } .term .tbar i:nth-child(3) { background: #28c840; }
+.term .tbar span { color: #7fa3ad; font-size: 13px; font-weight: 700; margin-left: 8px; }
+.term pre { padding: 22px 28px; color: #d7e7ea; font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 18px; line-height: 1.75; white-space: pre-wrap; }
+.term pre .p { color: #35BCAC; font-weight: 700; }
+.term pre .c { color: #5f7c85; }
+.term pre .g { color: #7FE5D8; }
+.term pre .y { color: #ffd479; }
+.tree { background: var(--bg-gray); border-radius: 12px; padding: 24px 34px; font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 19px; line-height: 1.9; font-weight: 500; white-space: pre; }
+.tree b { color: var(--teal-deep); font-weight: 700; }
+.tree .cm { color: #5b6b6f; font-family: 'Noto Sans JP', sans-serif; font-size: 16px; }
+
+/* ============ 追加: 引用スライド ============ */
+.s-quote { background: var(--grad-band); }
+.s-quote .qmark { position: absolute; top: 44px; left: 70px; font-size: 130px; font-weight: 900; color: rgba(255,255,255,.16); line-height: 1; font-family: Georgia, serif; }
+.s-quote .qbody { position: absolute; top: 50%; left: 110px; right: 110px; transform: translateY(-56%); color: #fff; }
+.s-quote .qbody p.q { font-size: 36px; font-weight: 900; line-height: 1.6; }
+.s-quote .qbody p.q .em { color: #7FE5D8; }
+.s-quote .qen { font-size: 18px; font-weight: 500; color: rgba(255,255,255,.65); margin-top: 18px; line-height: 1.6; }
+.s-quote .qwho { position: absolute; bottom: 76px; left: 110px; right: 110px; color: #fff; display: flex; align-items: center; gap: 18px; }
+.s-quote .qwho .nm { font-size: 22px; font-weight: 900; }
+.s-quote .qwho .rl { font-size: 16px; font-weight: 500; color: rgba(255,255,255,.75); }
+
+/* ============ 追加: Clawdキャラ＆ループ図 ============ */
+.clawd { display: inline-block; }
+.loopwrap { position: relative; width: 760px; height: 520px; margin: 0 auto; }
+.loopwrap .ring { position: absolute; inset: 0; animation: none; }
+.loopwrap .clawd-pos { position: absolute; animation: bob 2.6s ease-in-out infinite; }
+.loopwrap .clawd-pos.p1 { top: 0; left: 50%; transform: translateX(-50%); }
+.loopwrap .clawd-pos.p2 { bottom: 36px; left: 60px; animation-delay: .8s; }
+.loopwrap .clawd-pos.p3 { bottom: 36px; right: 60px; animation-delay: 1.6s; }
+@keyframes bob { 0%,100% { margin-top: 0; } 50% { margin-top: -12px; } }
+.loopwrap .ctr { position: absolute; top: 54%; left: 50%; transform: translate(-50%,-50%); text-align: center; }
+.loopwrap .ctr .cmd { font-family: 'SF Mono', Menlo, monospace; font-size: 46px; font-weight: 700; color: var(--teal-deep); }
+.loopwrap .ctr .sub { font-size: 17px; font-weight: 700; color: var(--teal-mid); margin-top: 4px; letter-spacing: .08em; }
+.loopwrap .badge-plus { position: absolute; top: 6px; right: 28px; background: var(--accent-red); color: #fff; font-size: 22px; font-weight: 900; padding: 10px 22px; border-radius: 999px; box-shadow: 0 6px 18px rgba(224,49,49,.35); animation: bob 2.6s ease-in-out infinite; animation-delay: .4s; }
+.flow { stroke-dasharray: 14 12; animation: flow 1.6s linear infinite; }
+@keyframes flow { to { stroke-dashoffset: -26; } }
+.march { display: flex; gap: 34px; align-items: flex-end; justify-content: center; }
+
+/* ============ 追加: 媒体タグ ============ */
+.media-grid { display: flex; flex-wrap: wrap; gap: 22px; justify-content: center; max-width: 1000px; }
+.media-card { width: 218px; border-radius: 14px; background: #fff; border: 2px solid #d7e2e4; padding: 20px 14px 16px; text-align: center; box-shadow: 0 4px 14px rgba(0,0,0,.06); }
+.media-card .mi { width: 52px; height: 52px; border-radius: 13px; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 23px; font-weight: 900; }
+.media-card .mn { font-size: 20px; font-weight: 900; }
+.media-card .md { font-size: 14px; color: #5b6b6f; margin-top: 4px; font-weight: 500; }
+.mtag { display: inline-flex; align-items: center; gap: 8px; background: var(--navy-deep); color: #fff; font-size: 18px; font-weight: 900; padding: 9px 20px; border-radius: 999px; }
+.mtag i { width: 10px; height: 10px; border-radius: 50%; background: var(--teal-bright); }
+
+/* ============ 追加: サイクル図 ============ */
+.cycle4 { position: relative; width: 100%; }
+.cycle4 .row { display: flex; align-items: stretch; justify-content: center; gap: 0; }
+.cycle4 .cstep { width: 218px; background: var(--bg-light); border: 2px solid var(--teal-mid); border-radius: 14px; padding: 18px 14px; text-align: center; }
+.cycle4 .cstep .cn { font-size: 15px; font-weight: 900; color: var(--teal-mid); letter-spacing: .14em; }
+.cycle4 .cstep .ct { font-size: 24px; font-weight: 900; margin-top: 2px; }
+.cycle4 .cstep .cd { font-size: 15px; color: #41555a; margin-top: 6px; font-weight: 500; line-height: 1.5; }
+.cycle4 .carrow { display: flex; align-items: center; padding: 0 10px; font-size: 30px; font-weight: 900; color: var(--teal-mid); }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute;" aria-hidden="true">
+  <defs>
+    <marker id="ah" markerWidth="10" markerHeight="10" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#1E8E8E"/></marker>
+    <g id="clawd-shape">
+      <rect x="2"  y="34" width="18" height="20" rx="5" fill="var(--clawd)"/>
+      <rect x="100" y="34" width="18" height="20" rx="5" fill="var(--clawd)"/>
+      <rect x="30" y="66" width="11" height="26" rx="5" fill="var(--clawd)"/>
+      <rect x="48" y="66" width="11" height="26" rx="5" fill="var(--clawd)"/>
+      <rect x="62" y="66" width="11" height="26" rx="5" fill="var(--clawd)"/>
+      <rect x="80" y="66" width="11" height="26" rx="5" fill="var(--clawd)"/>
+      <rect x="16" y="6" width="88" height="62" rx="10" fill="var(--clawd)"/>
+      <rect x="36" y="22" width="12" height="22" rx="4" fill="#16181d"/>
+      <rect x="72" y="22" width="12" height="22" rx="4" fill="#16181d"/>
+    </g>
+  </defs>
+</svg>
+
+<div id="viewport">
+<div id="stage">
+
+<!-- ===================== フック ===================== -->
+
+<!-- 1 表紙 -->
+<section class="slide active" data-nopage style="background: var(--grad-band);">
+  <span class="dots white tr"></span><span class="dots white bl"></span>
+  <div style="position:absolute; top:118px; left:0; right:0; text-align:center;">
+    <p style="color:#7FE5D8; font-size:21px; font-weight:900; letter-spacing:.18em;">LOOP ENGINEERING × CLAUDE CODE</p>
+    <h1 style="color:#fff; font-size:64px; font-weight:900; letter-spacing:.04em; margin-top:22px; line-height:1.3;">SNSを<span style="color:#7FE5D8;">完全自動化</span>させる</h1>
+    <p style="color:#fff; font-size:30px; font-weight:900; margin-top:18px;">AIが回り続ける「永久機関」を作ってみた</p>
+    <p style="display:inline-block; margin-top:26px; background:#fff; color:var(--navy-deep); font-size:22px; font-weight:900; padding:10px 36px; border-radius:999px;">完全放置で、コンテンツが増え続ける</p>
+  </div>
+  <div class="march" style="position:absolute; bottom:54px; left:0; right:0;">
+    <svg class="clawd" width="84" height="66" viewBox="0 0 120 94" style="animation:bob 2.6s ease-in-out infinite;"><use href="#clawd-shape"/></svg>
+    <svg class="clawd" width="84" height="66" viewBox="0 0 120 94" style="animation:bob 2.6s ease-in-out infinite; animation-delay:.5s;"><use href="#clawd-shape"/></svg>
+    <svg class="clawd" width="84" height="66" viewBox="0 0 120 94" style="animation:bob 2.6s ease-in-out infinite; animation-delay:1s;"><use href="#clawd-shape"/></svg>
+  </div>
+</section>
+
+<!-- 2 ループ図（フック） -->
+<section class="slide">
+  <span class="dots tr"></span><span class="dots bl"></span>
+  <p style="position:absolute; top:46px; left:0; right:0; text-align:center; font-size:30px; font-weight:900;">AIが<span class="red">勝手に</span>SNSを伸ばし続ける仕組み</p>
+  <div class="loopwrap" style="position:absolute; top:120px; left:50%; transform:translateX(-50%);">
+    <svg class="ring" width="760" height="520" viewBox="0 0 760 520" fill="none">
+      <path class="flow" d="M 470 96 A 235 215 0 0 1 645 330" stroke="#1E8E8E" stroke-width="6" marker-end="url(#ah)"/>
+      <path class="flow" d="M 590 432 A 235 215 0 0 1 175 434" stroke="#1E8E8E" stroke-width="6" marker-end="url(#ah)"/>
+      <path class="flow" d="M 116 330 A 235 215 0 0 1 290 96"  stroke="#1E8E8E" stroke-width="6" marker-end="url(#ah)"/>
+    </svg>
+    <div class="clawd-pos p1"><svg width="120" height="94" viewBox="0 0 120 94"><use href="#clawd-shape"/></svg></div>
+    <div class="clawd-pos p2"><svg width="120" height="94" viewBox="0 0 120 94"><use href="#clawd-shape"/></svg></div>
+    <div class="clawd-pos p3"><svg width="120" height="94" viewBox="0 0 120 94"><use href="#clawd-shape"/></svg></div>
+    <div class="ctr">
+      <p class="cmd">/loop</p>
+      <p class="sub">24時間 回り続ける</p>
+    </div>
+    <div class="badge-plus">フォロワー +10,000人</div>
+  </div>
+</section>
+
+<!-- 3 statement フック -->
+<section class="slide s-statement no-lead">
+  <span class="dots tr"></span><span class="dots bl"></span>
+  <div class="darkband"><p>こんな仕組みが自分のSNSで動いてたら<br><span style="color:#7FE5D8;">やばくないですか？</span></p></div>
+  <p style="position:absolute; bottom:80px; left:0; right:0; text-align:center; font-size:21px; font-weight:700;">寝てる間も、撮影してる間も、AIだけでコンテンツが増えていく</p>
+</section>
+
+<!-- 4 妄想ではない -->
+<section class="slide s-box">
+  <span class="dots tr"></span><span class="dots bl"></span>
+  <div class="boxwrap">
+    <h2 class="sec">これ、妄想でも未来の話でもありません</h2>
+    <div class="frame">
+      <ul class="check">
+        <li>Claude Code の<strong class="teal">標準機能だけ</strong>で作れます</li>
+        <li>必要なのはプログラミング力ではなく「<strong class="red">設計</strong>」</li>
+        <li>この動画で、仕組み・プロンプト・ファイル構造まで<strong class="teal">全部</strong>見せます</li>
+      </ul>
+    </div>
+  </div>
+  <div class="qcircle"></div>
+</section>
+
+<!-- 5 この動画でわかること -->
+<section class="slide s-band">
+  <div class="band"><h1>この動画でわかること</h1><span class="dots white"></span></div>
+  <div class="content vcenter">
+    <ol class="steplist" style="margin-top:8px;">
+      <li><strong>「ループエンジニアリング」とは何か</strong><br><span class="note">Claude Codeの生みの親も実践する、プロンプトの次の常識</span></li>
+      <li><strong>SNS永久機関の全体設計</strong><br><span class="note">YouTube・X・Instagram・TikTok・note・Tips・Threads を1つのループで回す</span></li>
+      <li><strong>実際のファイル構造とプロンプト</strong><br><span class="note">今日見せるもの、全部プレゼントします</span></li>
+    </ol>
+  </div>
+  <div class="qcircle"></div>
+</section>
+
+<!-- ===================== CH1 ループエンジニアリングとは ===================== -->
+
+<!-- 6 章扉 -->
+<section class="slide s-divider">
+  <span class="dots tr"></span><span class="dots bl"></span>
+  <p class="chapnum">CHAPTER 1</p>
+  <div class="pill">ループエンジニアリングとは</div>
+</section>
+
+<!-- 7 定義 -->
+<section class="slide s-tag">
+  <div class="tag">定義</div>
+  <span class="dots bl"></span>
+  <div class="content">
+    <p class="big" style="font-size:38px;">「<span class="red">ゴール</span>」と「<span class="red">検証方法</span>」を設計して、<br>AIが<span class="teal">自分で回り続けるループ</span>を作る技術</p>
+    <p class="body">人間が毎回プロンプトを打つのではなく、<br>「何を達成したら終わりか」「できたかどうかをどう確かめるか」を先に決めて、あとはAIに任せる。</p>
+  </div>
+</section>
+
+<!-- 8 compare プロンプトエンジニアリング vs ループ -->
+<section class="slide s-band">
+  <div class="band"><h1>プロンプトの時代は終わった</h1><span class="dots white"></span></div>
+  <div class="content">
+    <div class="compare">
+      <div class="card">
+        <span class="lbl">これまで</span>
+        <p class="eq">プロンプト<br>エンジニアリング <span class="bad">＝時代遅れ</span></p>
+        <ul class="dot">
+          <li style="font-size:19px;">1回の指示 → 1個の成果物</li>
+          <li style="font-size:19px;">毎回、人間が考えて打つ</li>
+          <li style="font-size:19px;">AIが終わったら止まる</li>
+        </ul>
+      </div>
+      <div class="card now">
+        <span class="lbl">これから</span>
+        <p class="eq">ループ<br>エンジニアリング <span class="good">＝新常識</span></p>
+        <ul class="dot">
+          <li style="font-size:19px;">1回の設計 → 成果物が出続ける</li>
+          <li style="font-size:19px;">次の指示はループが考える</li>
+          <li style="font-size:19px;">終わっても自分で再開する</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 9 ループの4要素 -->
+<section class="slide s-band">
+  <div class="band"><h1>ループの中身は4つだけ</h1><span class="dots white"></span></div>
+  <div class="content vcenter">
+    <div class="cycle4">
+      <div class="row">
+        <div class="cstep"><p class="cn">STEP 1</p><p class="ct">ゴール</p><p class="cd">何を達成したら<br>終わりか</p></div>
+        <div class="carrow">→</div>
+        <div class="cstep"><p class="cn">STEP 2</p><p class="ct">実行</p><p class="cd">タスクを<br>こなす</p></div>
+        <div class="carrow">→</div>
+        <div class="cstep"><p class="cn">STEP 3</p><p class="ct">検証</p><p class="cd">できたか自分で<br>確かめる</p></div>
+        <div class="carrow">→</div>
+        <div class="cstep" style="background:#fff; border-color:var(--accent-red);"><p class="cn" style="color:var(--accent-red);">STEP 4</p><p class="ct">修正</p><p class="cd">ダメなら直して<br>もう一度</p></div>
+      </div>
+      <svg width="100%" height="86" viewBox="0 0 1040 86" fill="none" style="margin-top:6px;">
+        <path class="flow" d="M 935 14 L 935 56 L 105 56 L 105 22" stroke="#1E8E8E" stroke-width="5" marker-end="url(#ah)" fill="none"/>
+        <text x="520" y="80" text-anchor="middle" font-size="18" font-weight="900" fill="#0C5F6A" font-family="'Noto Sans JP'">ゴール達成まで、何度でも自動で戻る</text>
+      </svg>
+    </div>
+    <div class="callout" style="margin-top:4px;">この「検証→修正」が入っているから、放置しても品質が落ちない</div>
+  </div>
+</section>
+
+<!-- 10 Boris引用 -->
+<section class="slide s-quote">
+  <p class="qmark">“</p>
+  <div class="qbody">
+    <p class="q">もうClaudeにプロンプトは打っていない。<br><span class="em">ループが走っていて、ループがClaudeに指示を出す。</span><br>私の仕事は、ループを書くことだ。</p>
+    <p class="qen">“I don't prompt Claude anymore. I have loops that are running. They're the ones that are prompting Claude.”</p>
+  </div>
+  <div class="qwho">
+    <div>
+      <p class="nm">Boris Cherny（ボリス・チャーニー）</p>
+      <p class="rl">Anthropic ／ Claude Code の生みの親。毎晩数千のサブエージェントを走らせていると公言</p>
+    </div>
+  </div>
+</section>
+
+<!-- 11 Peter引用 -->
+<section class="slide s-quote">
+  <p class="qmark">“</p>
+  <div class="qbody">
+    <p class="q">もうコーディングエージェントに<br>プロンプトを打つべきではない。<br><span class="em">エージェントに指示を出す「ループ」を設計すべきだ。</span></p>
+    <p class="qen">“You shouldn't be prompting coding agents anymore. You should be designing loops that prompt your agents.” — 2026年6月8日のXポストは650万ビューを突破</p>
+  </div>
+  <div class="qwho">
+    <div>
+      <p class="nm">Peter Steinberger（ピーター・スタインバーガー）</p>
+      <p class="rl">OpenClaw 作者 ／ OpenAI。エージェント界隈で最も影響力のあるエンジニアの一人</p>
+    </div>
+  </div>
+</section>
+
+<!-- 12 世界の最前線 -->
+<section class="slide s-tag">
+  <div class="tag">つまり</div>
+  <span class="dots bl"></span>
+  <div class="content">
+    <p class="big">世界の最前線はすでに<br>「プロンプトを書く人」→「<span class="red">ループを設計する人</span>」へ</p>
+    <p class="body">Claude Code（Anthropic）と Codex（OpenAI）、<br>両方の中の人がこの使い方を推奨している。</p>
+  </div>
+</section>
+
+<!-- 13 なぜ今できるのか -->
+<section class="slide s-band">
+  <div class="band"><h1>なぜ「今」できるようになったのか</h1><span class="dots white"></span></div>
+  <div class="content vcenter">
+    <ol class="steplist">
+      <li><strong>AIが長時間、壊れずに自走できるようになった</strong><br><span class="note">数時間レベルの連続タスクでも文脈を失わない</span></li>
+      <li><strong>AIが「自分の仕事を検証」できるようになった</strong><br><span class="note">スクリーンショット確認・文字数チェック・テスト実行を自分でやる</span></li>
+      <li><strong>サブエージェントで並列分業できるようになった</strong><br><span class="note">1つのループが、必要な数だけ部下を自動で増やす</span></li>
+    </ol>
+  </div>
+  <div class="qcircle"></div>
+</section>
+
+<!-- 14 道具一覧 -->
+<section class="slide s-band">
+  <div class="band"><h1>ループを作る4つの道具</h1><span class="dots white"></span></div>
+  <div class="content vcenter">
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px;">
+      <div class="card" style="background:var(--bg-light); border-radius:12px; padding:24px 30px;">
+        <p style="font-family:Menlo,monospace; font-size:26px; font-weight:700; color:var(--teal-deep);">/loop</p>
+        <p class="body" style="font-size:19px;">一定間隔 or AIの自己判断で、同じタスクを回し続ける</p>
+      </div>
+      <div class="card" style="background:var(--bg-light); border-radius:12px; padding:24px 30px;">
+        <p style="font-family:Menlo,monospace; font-size:26px; font-weight:700; color:var(--teal-deep);">/goal</p>
+        <p class="body" style="font-size:19px;">ゴールを設定して、達成するまで自律で実行し続ける</p>
+      </div>
+      <div class="card" style="background:var(--bg-gray); border-radius:12px; padding:24px 30px;">
+        <p style="font-family:Menlo,monospace; font-size:26px; font-weight:700; color:var(--teal-deep);">ultracode</p>
+        <p class="body" style="font-size:19px;">大量のエージェントを並列に走らせて、一気に検証・量産する</p>
+      </div>
+      <div class="card" style="background:var(--bg-gray); border-radius:12px; padding:24px 30px;">
+        <p style="font-size:24px; font-weight:900; color:var(--teal-deep);">サブエージェント <span style="font-size:17px; color:var(--accent-red);">＝AI社員</span></p>
+        <p class="body" style="font-size:19px;">ループが必要なときに自動で雇い、終わったら解散する部下</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 15 statement -->
+<section class="slide s-statement no-lead">
+  <span class="dots tr"></span><span class="dots bl"></span>
+  <div class="darkband"><p>プロンプトを書く時代から、<br>「<span style="color:#7FE5D8;">ループを設計する</span>」時代へ</p></div>
+</section>
+
+<!-- ===================== CH2 AI社員時代の終わり ===================== -->
+
+<!-- 16 章扉 -->
+<section class="slide s-divider">
+  <span class="dots tr"></span><span class="dots bl"></span>
+  <p class="chapnum">CHAPTER 2</p>
+  <div class="pill">「AI社員」時代の終わり</div>
+</section>
+
+<!-- 17 少し前までの正解 -->
+<section class="slide s-tag">
+  <div class="tag">少し前までの正解</div>
+  <span class="dots bl"></span>
+  <div class="content">
+    <p class="big">「AI社員を雇おう」<br>「AIに役割を与えて指示を出そう」</p>
+    <p class="body">ライター係・リサーチ係・編集係……<br>AIをスタッフのように使うのが最先端と言われてきました。</p>
+    <p class="callout" style="margin-top:6px;">でも、この方式には致命的な欠陥があります</p>
+  </div>
+</section>
+
+<!-- 18 ボトルネック -->
+<section class="slide s-band">
+  <div class="band"><h1>致命的な欠陥：人間がボトルネック</h1><span class="dots white"></span></div>
+  <div class="content vcenter">
+    <div class="colcenter" style="gap:30px;">
+      <p class="big center">AI社員は優秀。でも、ずっと「<span class="red">指示待ち</span>」</p>
+      <ul class="dot">
+        <li>指示を出せるのは、人間が PC の前にいる時間だけ</li>
+        <li>納品されたら、次の指示をまた人間が考える</li>
+        <li>AI社員が増えるほど、<strong class="red">管理する人間の仕事が増える</strong></li>
+      </ul>
+    </div>
+  </div>
+  <div class="qcircle"></div>
+</section>
+
+<!-- 19 稼働率 -->
+<section class="slide s-box">
+  <span class="dots tr"></span><span class="dots bl"></span>
+  <div class="boxwrap">
+    <h2 class="sec">数字で見ると、もったいなさが分かる</h2>
+    <div class="frame">
+      <p class="big center" style="font-size:30px;">AIは <span class="teal">24時間365日</span> 働けるのに、<br>人間が指示を出せるのは <span class="red">1日ほんの数回</span></p>
+      <p class="body center" style="margin-top:14px;">指示待ちの時間 ＝ AIが止まっている時間。<br>性能ではなく「指示の供給」が上限になっている。</p>
+    </div>
+  </div>
+  <div class="qcircle"></div>
+</section>
+
+<!-- 20 compare AI社員 vs ループ -->
+<section class="slide s-band">
+  <div class="band"><h1>AI社員方式 vs ループ方式</h1><span class="dots white"></span></div>
+  <div class="content">
+    <div class="compare">
+      <div class="card">
+        <span class="lbl">AI社員方式</span>
+        <p class="eq"><span class="bad">指示するたび</span>に動く</p>
+        <ul class="dot">
+          <li style="font-size:19px;">指示 → 納品 → また指示</li>
+          <li style="font-size:19px;">夜は止まる</li>
+          <li style="font-size:19px;">社員が増えると管理が増える</li>
+        </ul>
+      </div>
+      <div class="card now">
+        <span class="lbl">ループ方式</span>
+        <p class="eq"><span class="good">設計したら</span>動き続ける</p>
+        <ul class="dot">
+          <li style="font-size:19px;">設計1回 → あとは自走</li>
+          <li style="font-size:19px;">寝ている間も回る</li>
+          <li style="font-size:19px;">次の指示はループが出す</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 21 AI社員の行き先 -->
+<section class="slide s-tag">
+  <div class="tag">誤解しないでほしいこと</div>
+  <span class="dots bl"></span>
+  <div class="content">
+    <p class="big">AI社員が消えるわけではありません。<br>「<span class="red">雇い主</span>」が人間からループに変わるんです</p>
+    <p class="body">ループが必要なタイミングで、必要な数のサブエージェント（＝AI社員）を自動で雇い、<br>仕事が終わったら自動で解散する。人間は採用面接すらしなくていい。</p>
+  </div>
+</section>
+
+<!-- 22 statement -->
+<section class="slide s-statement no-lead">
+  <span class="dots tr"></span><span class="dots bl"></span>
+  <div class="darkband"><p>AI社員を雇って、指示する時代は<br><span style="color:#7FE5D8;">もう終わりました。</span></p></div>
+</section>
+
+<!-- ===================== CH3 SNS永久機関の全体像 ===================== -->
+
+<!-- 23 章扉 -->
+<section class="slide s-divider">
+  <span class="dots tr"></span><span class="dots bl"></span>
+  <p class="chapnum">CHAPTER 3</p>
+  <div class="pill">SNS永久機関の全体像</div>
+</section>
+
+<!-- 24 7媒体 -->
+<section class="slide s-band">
+  <div class="band"><h1>自動化する7つの媒体</h1><span class="dots white"></span></div>
+  <div class="content" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:26px;">
+    <div class="media-grid">
+      <div class="media-card"><div class="mi" style="background:#FF0000;">▶</div><p class="mn">YouTube</p><p class="md">長尺＋ショート</p></div>
+      <div class="media-card"><div class="mi" style="background:#000;">𝕏</div><p class="mn">X</p><p class="md">投稿文・告知</p></div>
+      <div class="media-card"><div class="mi" style="background:linear-gradient(45deg,#FEDA75,#D62976,#962FBF);">◎</div><p class="mn">Instagram</p><p class="md">リール</p></div>
+      <div class="media-card"><div class="mi" style="background:#010101;">♪</div><p class="mn">TikTok</p><p class="md">ショート動画</p></div>
+      <div class="media-card"><div class="mi" style="background:#41C9B4;">n</div><p class="mn">note</p><p class="md">記事</p></div>
+      <div class="media-card"><div class="mi" style="background:#0C5F6A;">T</div><p class="mn">Tips</p><p class="md">ノウハウ記事</p></div>
+      <div class="media-card"><div class="mi" style="background:#16181d;">@</div><p class="mn">Threads</p><p class="md">短文・連投</p></div>
+    </div>
+    <p class="body center" style="font-size:19px;">全部を人力でやったら、それだけで1日が終わる物量</p>
+  </div>
+</section>
+
+<!-- 25 アーキテクチャ -->
+<section class="slide s-band">
+  <div class="band"><h1>永久機関の設計図</h1><span class="dots white"></span></div>
+  <div class="content" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding-top:30px;">
+    <div style="background:#fff; border:2px solid var(--border-navy); border-radius:12px; padding:14px 44px; text-align:center;">
+      <p style="font-size:22px; font-weight:900;">素材：YouTube動画 1本（台本・文字起こし）</p>
+    </div>
+    <svg width="40" height="34" viewBox="0 0 40 34"><path class="flow" d="M20 2 L20 26" stroke="#1E8E8E" stroke-width="5" marker-end="url(#ah)"/></svg>
+    <div style="display:flex; align-items:center; gap:16px;">
+      <svg width="76" height="60" viewBox="0 0 120 94"><use href="#clawd-shape"/></svg>
+      <div style="background:var(--grad-band); color:#fff; border-radius:999px; padding:14px 46px; text-align:center;">
+        <p style="font-family:Menlo,monospace; font-size:26px; font-weight:700;">/loop <span style="font-family:'Noto Sans JP'; font-size:18px; font-weight:900;">が各媒体向けに 変換 → 検証 → 投稿</span></p>
+      </div>
+      <svg width="76" height="60" viewBox="0 0 120 94"><use href="#clawd-shape"/></svg>
+    </div>
+    <svg width="40" height="34" viewBox="0 0 40 34"><path class="flow" d="M20 2 L20 26" stroke="#1E8E8E" stroke-width="5" marker-end="url(#ah)"/></svg>
+    <div style="display:flex; flex-wrap:wrap; gap:12px; justify-content:center; max-width:980px;">
+      <span class="mtag"><i></i>X 投稿文</span>
+      <span class="mtag"><i></i>note 記事</span>
+      <span class="mtag"><i></i>Tips 記事</span>
+      <span class="mtag"><i></i>Threads 連投</span>
+      <span class="mtag"><i></i>リール台本</span>
+      <span class="mtag"><i></i>TikTok台本</span>
+      <span class="mtag"><i></i>ショート字幕</span>
+    </div>
+    <p class="note" style="margin-top:6px;">動画1本 → 7媒体分のコンテンツに自動分解。これが1ループ分</p>
+  </div>
+</section>
+
+<!-- 26 1本のループの中身 -->
+<section class="slide s-band">
+  <div class="band"><h1>1周のループでやっていること</h1><span class="dots white"></span></div>
+  <div class="content vcenter">
+    <ol class="steplist">
+      <li><strong>素材から、媒体ごとのコンテンツを生成</strong><br><span class="note">X用・note用・Tips用…それぞれ専用スキルが文体を変える</span></li>
+      <li><strong>フォーマットとファクトを検証</strong><br><span class="note">文字数・構成・固有名詞・URL を自分でチェック</span></li>
+      <li><strong>投稿 or 下書き保存</strong><br><span class="note">媒体ごとに「どこまで自動でやるか」を決めておく</span></li>
+      <li><strong>結果を記録して、次の素材へ</strong><br><span class="note">失敗パターンは memory に追記 → ループは回るほど賢くなる</span></li>
+    </ol>
+  </div>
+  <div class="qcircle"></div>
+</section>
+
+<!-- 27 タイムライン -->
+<section class="slide s-band">
+  <div class="band"><h1>夜、寝ている間の動き（イメージ）</h1><span class="dots white"></span></div>
+  <div class="content vcenter" style="padding-top:30px;">
+    <table class="tbl">
+      <tr><th style="width:140px;">時刻</th><th>ループの動き</th></tr>
+      <tr><td style="font-weight:900; color:var(--teal-deep);">21:00</td><td>/loop 起動。今日の動画の文字起こしを取得</td></tr>
+      <tr><td style="font-weight:900; color:var(--teal-deep);">21:10</td><td>X投稿文を生成 → 文字数・URL検証 → 保存</td></tr>
+      <tr><td style="font-weight:900; color:var(--teal-deep);">21:40</td><td>note記事を執筆 → タイトル3案 → ファクトチェック → 下書き保存</td></tr>
+      <tr><td style="font-weight:900; color:var(--teal-deep);">22:30</td><td>Tips記事 5,000字を執筆 → 投稿</td></tr>
+      <tr><td style="font-weight:900; color:var(--teal-deep);">23:10</td><td>ショート動画の台本×3本＋Threads連投を生成</td></tr>
+      <tr><td style="font-weight:900; color:var(--accent-red);">朝</td><td>成果物一覧と数値レポートが残っている</td></tr>
+    </table>
+    <p class="note" style="margin-top:14px;">人間が寝ている約8時間 ＝ これまで「AIが止まっていた」時間が、まるごと生産時間に変わる</p>
+  </div>
+</section>
+
+<!-- 28 人間の仕事 -->
+<section class="slide s-tag">
+  <div class="tag">人間の仕事</div>
+  <span class="dots bl"></span>
+  <div class="content">
+    <p class="big">残る仕事は、たった2つ</p>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:30px; width:100%;">
+      <div class="callout" style="font-size:24px; padding:28px;">① 最初のループ設計<br><span style="font-size:16px; font-weight:500;">ゴールと検証方法を決める（この動画の内容）</span></div>
+      <div class="callout" style="font-size:24px; padding:28px;">② 公開前の最終チェック<br><span style="font-size:16px; font-weight:500;">媒体によっては人間の承認を挟む</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- 29 正直な注意点 -->
+<section class="slide s-box">
+  <span class="dots tr"></span><span class="dots bl"></span>
+  <div class="boxwrap">
+    <h2 class="sec">正直に言うと：「100%放置」にしない場所もある</h2>
+    <div class="frame">
+      <ul class="dot">
+        <li><strong>YouTube本体への投稿は手動</strong> — 自動投稿はBANリスクがあるため、生成＋保存までで止める</li>
+        <li><strong>Xの公開ボタンも人間</strong> — 下書きまで自動。炎上リスクは人間が最終判断</li>
+        <li>つまり「<strong class="red">制作は全自動、公開の責任だけ人間</strong>」が現実的な最適解</li>
+      </ul>
+    </div>
+    <p class="note">ここを雑にすると事故ります。安全装置はChapter 4の最後で解説</p>
+  </div>
+</section>
+
+<!-- ===================== CH4 実例：作り方 ===================== -->
+
+<!-- 30 章扉 -->
+<section class="slide s-divider">
+  <span class="dots tr"></span><span class="dots bl"></span>
+  <p class="chapnum">CHAPTER 4</p>
+  <div class="pill">実例：永久機関の作り方</div>
+</section>
+
+<!-- 31 ファイル構造 -->
+<section class="slide s-band">
+  <div class="band"><h1>全体のファイル構造</h1><span class="dots white"></span></div>
+  <div class="content vcenter" style="padding-top:24px;">
+    <div class="tree">~/ClaudeCode/
+├── <b>CLAUDE.md</b>            <span class="cm">← AIの行動ルール（憲法）</span>
+├── .claude/skills/      <span class="cm">← 媒体別の投稿スキル（部品）</span>
+│   ├── <b>x-post/</b>          <span class="cm">← X投稿文の作り方</span>
+│   ├── <b>note-post/</b>        <span class="cm">← note記事の作り方</span>
+│   └── <b>tips-post/</b>        <span class="cm">← Tips記事の作り方</span>
+├── <b>memory/</b>              <span class="cm">← 文体・失敗パターンの記憶</span>
+└── <b>output/</b>              <span class="cm">← 生成物の置き場</span></div>
+    <p class="note" style="margin-top:14px;">ループ本体は短い。賢さの本体は CLAUDE.md と skills と memory に分散している</p>
+  </div>
+</section>
+
+<!-- 32 CLAUDE.md -->
+<section class="slide s-band">
+  <div class="band"><h1>CLAUDE.md ＝ ループの憲法</h1><span class="dots white"></span></div>
+  <div class="content vcenter">
+    <p class="body" style="margin-bottom:18px;">毎回のプロンプトに書かずとも、AIが<strong class="teal">常に守るルール</strong>をここに書く。例えば：</p>
+    <ul class="check">
+      <li>媒体ごとの<strong class="teal">文体規定</strong>（noteは装飾区切り、Xは口語キャッチ…）</li>
+      <li><strong class="red">禁止事項</strong>（YouTube自動投稿禁止／公開前に必ず確認…）</li>
+      <li>固有名詞・数字は<strong class="teal">ファクトチェック必須</strong></li>
+      <li>失敗したら memory に記録（同じミスを2度しない）</li>
+    </ul>
+    <div class="callout" style="margin-top:18px;">ルールを足すほど、放置できる範囲が広がる</div>
+  </div>
+</section>
+
+<!-- 33 スキル＝部品 -->
+<section class="slide s-band">
+  <div class="band"><h1>スキル ＝ ループが使う部品</h1><span class="dots white"></span></div>
+  <div class="content vcenter" style="gap:20px;">
+    <p class="body">媒体ごとの「作り方の手順書」をスキル（スラッシュコマンド）にしておくと、ループはそれを呼ぶだけで済む。</p>
+    <div style="display:flex; flex-wrap:wrap; gap:14px; justify-content:center; margin:18px 0;">
+      <span class="mtag" style="font-family:Menlo,monospace;"><i></i>/x-post</span>
+      <span class="mtag" style="font-family:Menlo,monospace;"><i></i>/note-post</span>
+      <span class="mtag" style="font-family:Menlo,monospace;"><i></i>/tips-post</span>
+      <span class="mtag" style="font-family:Menlo,monospace;"><i></i>/srt（字幕）</span>
+      <span class="mtag" style="font-family:Menlo,monospace;"><i></i>/cut（無音カット）</span>
+    </div>
+    <p class="body">一度スキル化した作業は、二度と手順を説明しなくていい。<br><strong class="teal">ループの品質 ＝ スキルの品質</strong>。</p>
+  </div>
+  <div class="qcircle"></div>
+</section>
+
+<!-- 34 /loopプロンプト実例 -->
+<section class="slide s-band">
+  <div class="band"><h1>実際の /loop プロンプト</h1><span class="dots white"></span></div>
+  <div class="content vcenter" style="padding-top:26px;">
+    <div class="term">
+      <div class="tbar"><i></i><i></i><i></i><span>claude — ~/ClaudeCode</span></div>
+      <pre><span class="p">&gt; /loop</span>
+今日公開したYouTube動画の文字起こしを素材に、
+X・note・Tips・Threads向けの投稿を順番に作成して。
+
+各媒体は対応するスキル（/x-post /note-post /tips-post）を使うこと。
+完成したら output/ に保存し、検証チェックリストを通すこと。
+全媒体が終わったら、成果物一覧のレポートを作って終了。</pre>
+    </div>
+    <p class="note" style="margin-top:12px;">これだけ。あとは何時間でも勝手に回る。「何を・どの部品で・どう確認して・いつ終わるか」が全部入っているのがポイント</p>
+  </div>
+</section>
+
+<!-- 35 ゴール設計 -->
+<section class="slide s-band">
+  <div class="band"><h1>ゴール設計：ダメな例 と 良い例</h1><span class="dots white"></span></div>
+  <div class="content">
+    <div class="compare">
+      <div class="card">
+        <span class="lbl" style="background:var(--accent-red);">ダメなゴール</span>
+        <p class="eq"><span class="bad">「SNSがんばって」</span></p>
+        <ul class="dot">
+          <li style="font-size:19px;">何をすればいいか曖昧</li>
+          <li style="font-size:19px;">終わりがない → 暴走する</li>
+          <li style="font-size:19px;">できたか確認できない</li>
+        </ul>
+      </div>
+      <div class="card now">
+        <span class="lbl">良いゴール</span>
+        <p class="eq" style="font-size:21px;"><span class="good">「note記事1本を下書き保存まで。<br>3,000字以上・タイトル3案・ファクトチェック済み」</span></p>
+        <ul class="dot">
+          <li style="font-size:19px;">具体的・検証可能・終了条件あり</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 36 検証方法 -->
+<section class="slide s-band">
+  <div class="band"><h1>検証方法の設計が、品質を決める</h1><span class="dots white"></span></div>
+  <div class="content vcenter">
+    <p class="body" style="margin-bottom:16px;">「できたかどうかをAI自身が確かめる方法」をループに書いておく：</p>
+    <ul class="check">
+      <li>文字数・構成がフォーマット通りか</li>
+      <li>固有名詞・数字・日付のファクトチェック</li>
+      <li>URLが実際に開けるか</li>
+      <li>下書きが本当に保存されたか（画面で確認）</li>
+    </ul>
+    <div class="callout" style="margin-top:18px;">Claude Code の生みの親いわく、自己検証を入れると成果物の品質は<span class="red">2〜3倍</span>になる</div>
+  </div>
+  <div class="qcircle"></div>
+</section>
+
+<!-- 37 実行中の画面 -->
+<section class="slide s-band">
+  <div class="band"><h1>実行中はこう見える</h1><span class="dots white"></span></div>
+  <div class="content vcenter" style="padding-top:26px;">
+    <div class="term">
+      <div class="tbar"><i></i><i></i><i></i><span>claude — /loop 実行中</span></div>
+      <pre><span class="c">[21:10] ループ 1周目</span>
+<span class="g">✓</span> X投稿文を生成しました → output/x_post_0612.txt
+<span class="g">✓</span> 検証OK（文字数 138 / URL動作確認済み）
+<span class="c">[21:42] ループ 2周目</span>
+<span class="g">✓</span> note記事 3,240字 → タイトル3案 → 下書き保存
+<span class="y">⚠</span> 固有名詞の表記ゆれを検出 → 修正して再検証 → <span class="g">OK</span>
+<span class="c">[22:31] ループ 3周目</span>
+<span class="g">✓</span> Tips記事 5,118字 → 投稿完了
+<span class="c">次の周回まで待機中…（停止: Ctrl+C）</span></pre>
+    </div>
+    <p class="note" style="margin-top:12px;">「⚠ → 自分で直して再検証」が出るのがループの真価。人間は見ていなくていい</p>
+  </div>
+</section>
+
+<!-- 38 実際の投稿画面 X -->
+<section class="slide s-band">
+  <div class="band"><h1>実際に投稿されたもの：X</h1><span class="dots white"></span></div>
+  <div class="content" style="display:flex; align-items:center; justify-content:center; gap:36px;">
+    <div class="xpost-ph" style="width:430px; height:430px;">ここに実際のX投稿の<br>スクリーンショット</div>
+    <div style="max-width:430px;">
+      <ul class="check">
+        <li>冒頭キャッチ＋動画URL＋学べること＋タイムスタンプの定型</li>
+        <li>文体は memory のフォーマット規定から自動適用</li>
+        <li>人間がやったのは「公開ボタンを押す」だけ</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 39 実際の投稿画面 note/Tips -->
+<section class="slide s-band">
+  <div class="band"><h1>実際に投稿されたもの：note ／ Tips</h1><span class="dots white"></span></div>
+  <div class="content" style="display:flex; align-items:center; justify-content:center; gap:30px;">
+    <div>
+      <div class="xpost-ph" style="width:430px; height:380px;">ここにnote記事の<br>スクリーンショット</div>
+      <p class="cap" style="font-size:17px; font-weight:700; color:var(--teal-deep); text-align:center; margin-top:10px;">note：3,000字＋装飾区切り＋下書き保存まで自動</p>
+    </div>
+    <div>
+      <div class="xpost-ph" style="width:430px; height:380px;">ここにTips記事の<br>スクリーンショット</div>
+      <p class="cap" style="font-size:17px; font-weight:700; color:var(--teal-deep); text-align:center; margin-top:10px;">Tips：5,000字記事を投稿まで自動</p>
+    </div>
+  </div>
+</section>
+
+<!-- 40 安全装置 -->
+<section class="slide s-band">
+  <div class="band"><h1>暴走させないための安全装置</h1><span class="dots white"></span></div>
+  <div class="content vcenter">
+    <ol class="steplist">
+      <li><strong>上限を決める</strong><br><span class="note">回数・時間・コストの上限をループに書いておく（無限は事故のもと）</span></li>
+      <li><strong>「公開」は人間の承認制にする</strong><br><span class="note">生成・下書きまで自動、世に出る瞬間だけ人間が押す</span></li>
+      <li><strong>止め方を知っておく</strong><br><span class="note">Ctrl+C で即停止。「◯◯になったら止まれ」という停止条件も書ける</span></li>
+    </ol>
+  </div>
+  <div class="qcircle"></div>
+</section>
+
+<!-- 41 媒体別テーブル -->
+<section class="slide s-band">
+  <div class="band"><h1>媒体別：ゴールと自動化レベル早見表</h1><span class="dots white"></span></div>
+  <div class="content" style="display:flex; align-items:center; padding-top:24px;">
+    <table class="tbl" style="font-size:17px;">
+      <tr><th style="width:130px;">媒体</th><th>ループのゴール</th><th>検証</th><th style="width:170px;">公開</th></tr>
+      <tr><td><strong>YouTube</strong></td><td>台本・字幕・概要欄の生成</td><td>字幕同期・誤字</td><td><span class="red">手動</span>（BAN対策）</td></tr>
+      <tr><td><strong>X</strong></td><td>投稿文＋タイムスタンプ</td><td>フォーマット・URL</td><td>下書き→<span class="red">人間承認</span></td></tr>
+      <tr><td><strong>Instagram</strong></td><td>リール台本・キャプション</td><td>冒頭3秒フック</td><td>半自動</td></tr>
+      <tr><td><strong>TikTok</strong></td><td>ショート台本</td><td>完了率を意識した構成</td><td>半自動</td></tr>
+      <tr><td><strong>note</strong></td><td>記事3,000字＋タイトル3案</td><td>文体・ファクト</td><td>下書き保存まで<span class="teal">自動</span></td></tr>
+      <tr><td><strong>Tips</strong></td><td>記事5,000字</td><td>固定構成・体裁</td><td>投稿まで<span class="teal">自動</span></td></tr>
+      <tr><td><strong>Threads</strong></td><td>短文・連投セット</td><td>文体・分割</td><td>半自動</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- 42 よくある失敗 -->
+<section class="slide s-band">
+  <div class="band"><h1>よくある失敗 3つ</h1><span class="dots white"></span></div>
+  <div class="content vcenter">
+    <ol class="steplist">
+      <li><strong class="red">ゴールが曖昧で暴走する</strong><br><span class="note">→「終了条件」を必ず書く。良いゴール＝具体的・検証可能・終わりがある</span></li>
+      <li><strong class="red">検証なしで低品質を量産する</strong><br><span class="note">→ 量が出るぶん、検証ステップがないと「ゴミの自動生成機」になる</span></li>
+      <li><strong class="red">全自動に欲張って事故る</strong><br><span class="note">→ 公開の最終判断は人間。媒体の規約と BAN リスクは必ず確認</span></li>
+    </ol>
+  </div>
+  <div class="qcircle"></div>
+</section>
+
+<!-- ===================== プレゼント＆まとめ ===================== -->
+
+<!-- 43 プレゼント -->
+<section class="slide s-statement">
+  <span class="dots tr"></span><span class="dots bl"></span>
+  <p class="lead">ここまで見せた仕組み——</p>
+  <div class="darkband"><p>ファイル構造もプロンプトも<br><span style="color:#7FE5D8;">全部プレゼント</span>します</p></div>
+  <p style="position:absolute; bottom:76px; left:0; right:0; text-align:center; font-size:20px; font-weight:700;">受け取り方法は、この動画の中と概要欄でご案内します</p>
+</section>
+
+<!-- 44 プレゼント内容 -->
+<section class="slide s-band">
+  <div class="band"><h1>プレゼントの中身</h1><span class="dots white"></span></div>
+  <div class="content vcenter">
+    <ul class="check">
+      <li><strong class="teal">SNS永久機関のファイル構造一式</strong> — CLAUDE.md／skills／memory のテンプレ</li>
+      <li><strong class="teal">/loop プロンプト集</strong> — この動画で見せたものを含む実戦テンプレ</li>
+      <li><strong class="teal">媒体別ゴール・検証シート</strong> — 7媒体ぶんの設計早見表</li>
+    </ul>
+    <div class="callout" style="margin-top:20px;">コピペして自分の媒体名に書き換えれば、今夜から回せます</div>
+  </div>
+  <div class="qcircle"></div>
+</section>
+
+<!-- 45 まとめ -->
+<section class="slide s-band">
+  <div class="band"><h1>まとめ</h1><span class="dots white"></span></div>
+  <div class="content vcenter">
+    <ol class="steplist">
+      <li><strong>ループエンジニアリング ＝ ゴールと検証方法の設計</strong><br><span class="note">プロンプトを打つのではなく、AIが回り続ける仕組みを作る</span></li>
+      <li><strong>AI社員は「人間が雇う」から「ループが雇う」へ</strong><br><span class="note">指示待ちをなくせば、AIは24時間働ける</span></li>
+      <li><strong>まずは1媒体・1ループから</strong><br><span class="note">noteの下書き自動化だけでも、世界が変わる</span></li>
+    </ol>
+  </div>
+  <div class="qcircle"></div>
+</section>
+
+<!-- 46 エンディング -->
+<section class="slide" data-nopage style="background: var(--grad-band);">
+  <span class="dots white tr"></span><span class="dots white bl"></span>
+  <div style="position:absolute; top:50%; left:0; right:0; transform:translateY(-58%); text-align:center;">
+    <p style="color:#fff; font-size:44px; font-weight:900; line-height:1.6;">SNSの自動化は、<br>「<span style="color:#7FE5D8;">ループを設計した人</span>」から始まる。</p>
+    <p style="color:rgba(255,255,255,.85); font-size:22px; font-weight:700; margin-top:30px;">まずは Claude Code を開いて、<span style="font-family:Menlo,monospace; color:#7FE5D8;">/loop</span> と打ってみてください。</p>
+  </div>
+  <div class="march" style="position:absolute; bottom:54px; left:0; right:0;">
+    <svg width="70" height="55" viewBox="0 0 120 94" style="animation:bob 2.6s ease-in-out infinite;"><use href="#clawd-shape"/></svg>
+    <svg width="70" height="55" viewBox="0 0 120 94" style="animation:bob 2.6s ease-in-out infinite; animation-delay:.5s;"><use href="#clawd-shape"/></svg>
+    <svg width="70" height="55" viewBox="0 0 120 94" style="animation:bob 2.6s ease-in-out infinite; animation-delay:1s;"><use href="#clawd-shape"/></svg>
+  </div>
+</section>
+
+</div>
+</div>
+
+<div id="hud">
+  <button id="prev">← 前へ</button>
+  <span id="counter">1 / 46</span>
+  <button id="next">次へ →</button>
+</div>
+
+<script>
+(function () {
+  const stage = document.getElementById('stage');
+  const slides = () => Array.from(stage.querySelectorAll('.slide'));
+  let idx = 0;
+
+  function fit() {
+    const s = Math.min(window.innerWidth / 1300, window.innerHeight / 760);
+    stage.style.transform = `scale(${s})`;
+  }
+  function show(i) {
+    const ss = slides();
+    idx = Math.max(0, Math.min(i, ss.length - 1));
+    ss.forEach((el, j) => el.classList.toggle('active', j === idx));
+    document.getElementById('counter').textContent = `${idx + 1} / ${ss.length}`;
+    const u = new URL(location.href); u.hash = `#${idx + 1}`; history.replaceState(null, '', u);
+  }
+  window.showSlide = (n) => show(n - 1);
+  function numberSlides() {
+    slides().forEach((el, j) => {
+      if (el.dataset.nopage !== undefined) return;
+      const n = document.createElement('div');
+      n.className = 'pageno'; n.textContent = `${j + 1} / ${slides().length}`;
+      el.appendChild(n);
+    });
+  }
+  window.addEventListener('resize', fit);
+  window.addEventListener('keydown', (e) => {
+    if (['ArrowRight', ' ', 'PageDown', 'Enter'].includes(e.key)) { e.preventDefault(); show(idx + 1); }
+    if (['ArrowLeft', 'PageUp', 'Backspace'].includes(e.key)) { e.preventDefault(); show(idx - 1); }
+    if (e.key === 'Home') show(0);
+    if (e.key === 'End') show(slides().length - 1);
+  });
+  stage.addEventListener('click', (e) => {
+    if (e.target.closest('a,button')) return;
+    const r = stage.getBoundingClientRect();
+    (e.clientX - r.left) / r.width < 0.25 ? show(idx - 1) : show(idx + 1);
+  });
+  document.getElementById('prev').addEventListener('click', () => show(idx - 1));
+  document.getElementById('next').addEventListener('click', () => show(idx + 1));
+  let idleTimer;
+  function wake() {
+    document.body.classList.remove('idle');
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => document.body.classList.add('idle'), 2500);
+  }
+  ['mousemove', 'keydown', 'click'].forEach((ev) => window.addEventListener(ev, wake));
+  wake();
+  numberSlides(); fit();
+  const h = parseInt(location.hash.slice(1), 10);
+  show(Number.isFinite(h) ? h - 1 : 0);
+})();
+</script>
+</body>
+</html>
